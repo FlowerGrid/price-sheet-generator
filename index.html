@@ -448,23 +448,23 @@ weddings &amp; private engagements</div>
 const DEFAULT_DATA = {
   sections: [
     { id: "band", label: "Live Band", layout: "full", visible: true, items: [
-      { name: "Trio", desc: "Acoustic guitar, electric guitar, two vocals & drums — the full 90s country experience, stripped down and tight", price: "0", visible: true },
-      { name: "Four-Piece", desc: "Full energy and a full sound with bass, drums, electric guitar, acoustic guitar and 2 vocals", price: "0", visible: true },
-      { name: "Five-Piece", desc: "Full band — maximum energy, maximum impact including pedal steel, fiddle or keys", price: "0", visible: true }
+      { name: "Trio", desc: "Acoustic guitar, electric guitar, two vocals & drums — the full 90s country experience, stripped down and tight", price: "0", priceMax: "", visible: true },
+      { name: "Four-Piece", desc: "Full energy and a full sound with bass, drums, electric guitar, acoustic guitar and 2 vocals", price: "0", priceMax: "", visible: true },
+      { name: "Five-Piece", desc: "Full band — maximum energy, maximum impact including pedal steel, fiddle or keys", price: "0", priceMax: "", visible: true }
     ]},
     { id: "production", label: "Production", layout: "full", visible: true, items: [
-      { name: "Ceremony Sound Package", desc: "2 lapel mics\nRecorded music · Onsite engineer", price: "0", visible: true },
-      { name: "Reception Sound Package", desc: "Full PA · Instruments & cables\nOnsite engineer · Break music\n2 speaker mics", price: "0", visible: true },
-      { name: "Stage Lighting", desc: "Full stage lighting package", price: "0", visible: true }
+      { name: "Ceremony Sound Package", desc: "2 lapel mics\nRecorded music · Onsite engineer", price: "0", priceMax: "", visible: true },
+      { name: "Reception Sound Package", desc: "Full PA · Instruments & cables\nOnsite engineer · Break music\n2 speaker mics", price: "0", priceMax: "", visible: true },
+      { name: "Stage Lighting", desc: "Full stage lighting package", price: "0", priceMax: "", visible: true }
     ]},
     { id: "dj", label: "DJ Services", layout: "half", visible: true, items: [
-      { name: "Fixed Light DJ", desc: "Pre-set iPod playlist — curated & hands-off", price: "0", visible: true },
-      { name: "Light DJ", desc: "Manned iPod playlist — attendant present throughout", price: "0", visible: true },
-      { name: "Full DJ", desc: "Live mixing, request management, full DJ experience", price: "0", visible: true }
+      { name: "Fixed Light DJ", desc: "Pre-set iPod playlist — curated & hands-off", price: "0", priceMax: "", visible: true },
+      { name: "Light DJ", desc: "Manned iPod playlist — attendant present throughout", price: "0", priceMax: "", visible: true },
+      { name: "Full DJ", desc: "Live mixing, request management, full DJ experience", price: "0", priceMax: "", visible: true }
     ]},
     { id: "addons", label: "Add-Ons", layout: "half", visible: true, items: [
-      { name: "MC Services", desc: "Introductions, announcements & event flow", price: "0", visible: true },
-      { name: "Ceremony Music", desc: "Solo acoustic or acoustic + accompaniment\nProcessional, recessional & more", price: "0", visible: true },
+      { name: "MC Services", desc: "Introductions, announcements & event flow", price: "0", priceMax: "", visible: true },
+      { name: "Ceremony Music", desc: "Solo acoustic or acoustic + accompaniment\nProcessional, recessional & more", price: "0", priceMax: "", visible: true },
       { name: "Travel & Lodging", desc: "3 hotel rooms + fuel costs", price: "Quoted separately", visible: true, isNote: true }
     ]}
   ],
@@ -574,6 +574,7 @@ function renderEditForm() {
         priceInput.value = item.price;
         priceInput.addEventListener("input", () => { item.price = priceInput.value; persist(); renderSheet(); });
         priceRow.appendChild(priceInput);
+        card.appendChild(priceRow);
       } else {
         const wrap = document.createElement("div");
         wrap.className = "price-input-wrap";
@@ -584,8 +585,24 @@ function renderEditForm() {
         priceInput.addEventListener("input", () => { item.price = priceInput.value; persist(); renderSheet(); });
         wrap.appendChild(priceInput);
         priceRow.appendChild(wrap);
+        card.appendChild(priceRow);
+
+        // optional max price — filling this in turns the price into a range
+        const maxRow = document.createElement("div");
+        maxRow.className = "field-row";
+        maxRow.innerHTML = `<span class="field-label">Max price (optional — makes it a range)</span>`;
+        const maxWrap = document.createElement("div");
+        maxWrap.className = "price-input-wrap";
+        const maxInput = document.createElement("input");
+        maxInput.className = "field-input";
+        maxInput.inputMode = "decimal";
+        maxInput.placeholder = "Leave blank for a single price";
+        maxInput.value = item.priceMax || "";
+        maxInput.addEventListener("input", () => { item.priceMax = maxInput.value; persist(); renderSheet(); });
+        maxWrap.appendChild(maxInput);
+        maxRow.appendChild(maxWrap);
+        card.appendChild(maxRow);
       }
-      card.appendChild(priceRow);
 
       secEl.appendChild(card);
     });
@@ -633,6 +650,13 @@ function renderSheet() {
   document.getElementById("sheet-notes").innerHTML = escapeHtml(data.notes).replace(/\n/g, "<br>");
 }
 
+function formatPrice(item) {
+  if (item.isNote) return escapeHtml(item.price);
+  const hasMax = item.priceMax !== undefined && String(item.priceMax).trim() !== "";
+  if (hasMax) return "$" + escapeHtml(item.price) + " - $" + escapeHtml(item.priceMax);
+  return "$" + escapeHtml(item.price);
+}
+
 function buildSectionEl(section) {
   const visibleItems = section.items.filter(it => it.visible);
   const wrap = document.createElement("div");
@@ -650,7 +674,7 @@ function buildSectionEl(section) {
             <div class="item-desc">${escapeHtml(item.desc).replace(/\n/g, "<br>")}</div>
           </td>
           <td>
-            <div class="price" style="${item.isNote ? 'font-size:11px;' : ''}">${item.isNote ? escapeHtml(item.price) : '$' + escapeHtml(item.price)}</div>
+            <div class="price" style="${item.isNote ? 'font-size:11px;' : ''}">${formatPrice(item)}</div>
           </td>
         </tr>
       `).join("")}
