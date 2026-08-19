@@ -277,11 +277,14 @@
     padding-bottom: 20px; border-bottom: 2px solid var(--ink); margin-bottom: 14px;
   }
   .logo-block { flex-shrink: 0; }
-  .logo-western { font-family: serif; font-size: 34px; letter-spacing: 0.14em; color: var(--ink); line-height: 1; margin-bottom: 2px; }
-  .logo-divider { display: flex; align-items: center; gap: 8px; margin: 5px 0 4px; }
-  .logo-line { height: 1.5px; width: 52px; background: var(--ink); }
-  .logo-arrows { font-size: 13px; letter-spacing: -3px; color: var(--ink); }
-  .logo-rewind { font-family: serif; font-size: 34px; letter-spacing: 0.14em; color: var(--ink); line-height: 1; }
+  .logo-image {
+    display: block;
+    height: 90px;
+    width: auto;
+    max-width: 260px;
+    object-fit: contain;
+    object-position: left center;
+  }
   .logo-tagline { font-family: 'Courier Prime', monospace; font-size: 9px; letter-spacing: 0.28em; color: var(--muted); text-transform: uppercase; margin-top: 6px; }
   .header-right { text-align: right; }
   .doc-label { font-family: 'Playfair Display', serif; font-style: italic; font-size: 22px; color: var(--ink); line-height: 1.1; margin-bottom: 4px; }
@@ -403,14 +406,8 @@
           <div class="page-wrap">
             <div class="header">
               <div class="logo-block">
-                <div class="logo-western">WESTERN</div>
-                <div class="logo-divider">
-                  <div class="logo-line"></div>
-                  <div class="logo-arrows">◀◀</div>
-                  <div class="logo-line"></div>
-                </div>
-                <div class="logo-rewind">REWIND</div>
-                <div class="logo-tagline">Throwback Country</div>
+                <img class="logo-image" src="logo.png" alt="Western Rewind logo">
+                <!-- <div class="logo-tagline">Throwback Country</div> -->
               </div>
               <div class="header-right">
                 <div class="doc-label">Pricing &amp; Services Guide</div>
