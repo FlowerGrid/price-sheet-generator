@@ -137,6 +137,10 @@
     opacity: 0.4;
     pointer-events: none;
   }
+  .edit-section.section-off .add-item-btn {
+    opacity: 0.4;
+    pointer-events: none;
+  }
 
   .item-card {
     background: #fff;
@@ -151,8 +155,40 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 10px;
     margin-bottom: 8px;
   }
+
+  .remove-item-btn {
+    flex-shrink: 0;
+    background: none;
+    border: none;
+    color: var(--danger);
+    font-family: 'Courier Prime', monospace;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 4px 0;
+  }
+
+  .add-item-btn {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    background: #fff;
+    border: 1.5px dashed var(--app-line);
+    color: var(--app-accent);
+    font-family: 'Courier Prime', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 11px 0;
+    border-radius: 7px;
+    cursor: pointer;
+  }
+  .add-item-btn:active { background: var(--app-accent-soft); }
 
   .field-label {
     font-size: 8.5px;
@@ -407,7 +443,7 @@
             <div class="header">
               <div class="logo-block">
                 <img class="logo-image" src="logo.png" alt="Western Rewind logo">
-                <!-- <div class="logo-tagline">Throwback Country</div> -->
+                <div class="logo-tagline">Throwback Country</div>
               </div>
               <div class="header-right">
                 <div class="doc-label">Pricing &amp; Services Guide</div>
@@ -535,6 +571,20 @@ function renderEditForm() {
       label.appendChild(cb);
       label.appendChild(document.createTextNode("Show on sheet"));
       top.appendChild(label);
+
+      const removeBtn = document.createElement("button");
+      removeBtn.className = "remove-item-btn";
+      removeBtn.type = "button";
+      removeBtn.textContent = "Remove";
+      removeBtn.addEventListener("click", () => {
+        if (!confirm(`Remove "${item.name || "this item"}"? This can't be undone.`)) return;
+        section.items.splice(iIdx, 1);
+        persist();
+        renderEditForm();
+        renderSheet();
+      });
+      top.appendChild(removeBtn);
+
       card.appendChild(top);
 
       // name
@@ -603,6 +653,18 @@ function renderEditForm() {
 
       secEl.appendChild(card);
     });
+
+    const addBtn = document.createElement("button");
+    addBtn.className = "add-item-btn";
+    addBtn.type = "button";
+    addBtn.textContent = "+ Add item to " + section.label;
+    addBtn.addEventListener("click", () => {
+      section.items.push({ name: "New Item", desc: "", price: "0", priceMax: "", visible: true });
+      persist();
+      renderEditForm();
+      renderSheet();
+    });
+    secEl.appendChild(addBtn);
 
     container.appendChild(secEl);
   });
@@ -743,11 +805,28 @@ document.getElementById("export-btn").addEventListener("click", async () => {
   const prevTransform = scaleWrap.style.transform;
   scaleWrap.style.transform = "none";
 
+  // html2canvas captures relative to the page's current scroll offset — if the
+  // page is scrolled when export runs, it can miscalculate bounds and grab only
+  // part of the sheet. Force the page to the top and pin the capture origin
+  // before shooting, then restore wherever the user was afterward.
+  const prevScrollX = window.scrollX;
+  const prevScrollY = window.scrollY;
+  window.scrollTo(0, 0);
+  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
   const opt = {
     margin: 0,
     filename: "western-rewind-pricing.pdf",
     image: { type: "jpeg", quality: 0.98 },
-    html2canvas: { scale: 2, useCORS: true, backgroundColor: "#FAFAF8" },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#FAFAF8",
+      scrollX: 0,
+      scrollY: 0,
+      windowWidth: document.documentElement.scrollWidth,
+      windowHeight: document.documentElement.scrollHeight
+    },
     jsPDF: { unit: "in", format: "letter", orientation: "portrait" }
   };
 
@@ -758,6 +837,7 @@ document.getElementById("export-btn").addEventListener("click", async () => {
     showToast("Export failed — try again");
   } finally {
     scaleWrap.style.transform = prevTransform;
+    window.scrollTo(prevScrollX, prevScrollY);
     btn.disabled = false;
     btn.textContent = "Export PDF";
   }
