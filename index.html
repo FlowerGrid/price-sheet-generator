@@ -101,15 +101,6 @@
   }
   .edit-section:first-child { margin-top: 6px; }
 
-  .edit-section-title-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-bottom: 6px;
-    border-bottom: 1.5px solid var(--app-ink);
-    margin-bottom: 10px;
-  }
-
   .edit-section-title {
     font-family: serif;
     font-size: 13px;
@@ -155,8 +146,45 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    flex-wrap: wrap;
+    gap: 8px 10px;
     margin-bottom: 8px;
+  }
+
+  .move-btn-group {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .move-btn {
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--app-line);
+    background: #fff;
+    border-radius: 5px;
+    color: var(--app-ink);
+    font-size: 12px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .move-btn:active:not(:disabled) { background: var(--app-accent-soft); }
+  .move-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+  }
+
+  .edit-section-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px 10px;
+    padding-bottom: 6px;
+    border-bottom: 1.5px solid var(--app-ink);
+    margin-bottom: 10px;
   }
 
   .remove-item-btn {
@@ -549,6 +577,40 @@ function renderEditForm() {
     secLabel.appendChild(document.createTextNode("Show section"));
     titleRow.appendChild(secLabel);
 
+    const secMove = document.createElement("div");
+    secMove.className = "move-btn-group";
+    const secUpBtn = document.createElement("button");
+    secUpBtn.type = "button";
+    secUpBtn.className = "move-btn";
+    secUpBtn.textContent = "↑";
+    secUpBtn.disabled = sIdx === 0;
+    secUpBtn.setAttribute("aria-label", "Move " + section.label + " section up");
+    secUpBtn.addEventListener("click", () => {
+      if (sIdx === 0) return;
+      const arr = data.sections;
+      [arr[sIdx - 1], arr[sIdx]] = [arr[sIdx], arr[sIdx - 1]];
+      persist();
+      renderEditForm();
+      renderSheet();
+    });
+    const secDownBtn = document.createElement("button");
+    secDownBtn.type = "button";
+    secDownBtn.className = "move-btn";
+    secDownBtn.textContent = "↓";
+    secDownBtn.disabled = sIdx === data.sections.length - 1;
+    secDownBtn.setAttribute("aria-label", "Move " + section.label + " section down");
+    secDownBtn.addEventListener("click", () => {
+      if (sIdx === data.sections.length - 1) return;
+      const arr = data.sections;
+      [arr[sIdx + 1], arr[sIdx]] = [arr[sIdx], arr[sIdx + 1]];
+      persist();
+      renderEditForm();
+      renderSheet();
+    });
+    secMove.appendChild(secUpBtn);
+    secMove.appendChild(secDownBtn);
+    titleRow.appendChild(secMove);
+
     secEl.appendChild(titleRow);
 
     section.items.forEach((item, iIdx) => {
@@ -571,6 +633,40 @@ function renderEditForm() {
       label.appendChild(cb);
       label.appendChild(document.createTextNode("Show on sheet"));
       top.appendChild(label);
+
+      const itemMove = document.createElement("div");
+      itemMove.className = "move-btn-group";
+      const upBtn = document.createElement("button");
+      upBtn.type = "button";
+      upBtn.className = "move-btn";
+      upBtn.textContent = "↑";
+      upBtn.disabled = iIdx === 0;
+      upBtn.setAttribute("aria-label", "Move " + (item.name || "item") + " up");
+      upBtn.addEventListener("click", () => {
+        if (iIdx === 0) return;
+        const arr = section.items;
+        [arr[iIdx - 1], arr[iIdx]] = [arr[iIdx], arr[iIdx - 1]];
+        persist();
+        renderEditForm();
+        renderSheet();
+      });
+      const downBtn = document.createElement("button");
+      downBtn.type = "button";
+      downBtn.className = "move-btn";
+      downBtn.textContent = "↓";
+      downBtn.disabled = iIdx === section.items.length - 1;
+      downBtn.setAttribute("aria-label", "Move " + (item.name || "item") + " down");
+      downBtn.addEventListener("click", () => {
+        if (iIdx === section.items.length - 1) return;
+        const arr = section.items;
+        [arr[iIdx + 1], arr[iIdx]] = [arr[iIdx], arr[iIdx + 1]];
+        persist();
+        renderEditForm();
+        renderSheet();
+      });
+      itemMove.appendChild(upBtn);
+      itemMove.appendChild(downBtn);
+      top.appendChild(itemMove);
 
       const removeBtn = document.createElement("button");
       removeBtn.className = "remove-item-btn";
