@@ -412,6 +412,9 @@
     overflow: visible; /* never silently clip — a measurement edge-case should overflow visibly, not vanish */
     position: relative;
   }
+  .sheet.sheet-freeform {
+    height: auto;
+  }
   .page-number {
     position: absolute;
     left: 0;
@@ -622,6 +625,16 @@
 
     <div class="global-toggle-card">
       <label class="global-toggle">
+        <input type="checkbox" id="print-friendly-toggle">
+        <span>
+          <span class="global-toggle-title">Make print-friendly</span>
+          <span class="global-toggle-sub">Splits into standard letter-sized pages with running headers and page numbers. Off by default — exports as one continuous document, best for viewing on screen.</span>
+        </span>
+      </label>
+    </div>
+
+    <div class="global-toggle-card">
+      <label class="global-toggle">
         <input type="checkbox" id="starting-at-toggle">
         <span>
           <span class="global-toggle-title">Mark pricing as "Starting At"</span>
@@ -691,7 +704,8 @@ const DEFAULT_DATA = {
     visible: true,
     position: "top",
     big: false
-  }
+  },
+  printFriendly: false
 };
 
 const STORAGE_KEY = "wr-pricing-data-v2";
@@ -755,6 +769,15 @@ function renderEditForm() {
   };
   posBottom.onchange = () => {
     if (posBottom.checked) { data.headerNote.position = "bottom"; persist(); renderSheet(); }
+  };
+
+  const printFriendlyToggle = document.getElementById("print-friendly-toggle");
+  printFriendlyToggle.checked = !!data.printFriendly;
+  printFriendlyToggle.onchange = () => {
+    data.printFriendly = printFriendlyToggle.checked;
+    persist();
+    renderSheet();
+    requestAnimationFrame(scalePreview);
   };
 
   const startingAtToggle = document.getElementById("starting-at-toggle");
@@ -1365,9 +1388,38 @@ function buildPageContentEl(pageIndex, plan) {
   }
 }
 
+// Builds the single continuous document (default mode): header, optional top
+// note, every row, and the footer group, all flowing naturally one after
+// another with no split, no mini-header, and no page number — the page just
+// grows to whatever height the content needs.
+function buildFreeformPageEl() {
+  const rows = buildRows();
+  const showTopNote = data.headerNote.visible && data.headerNote.position === "top";
+
+  const children = [buildHeaderEl()];
+  if (showTopNote) children.push(buildTopNoteEl());
+  if (rows.length) {
+    const sectionsCol = document.createElement("div");
+    sectionsCol.className = "sheet-sections-col";
+    rows.forEach(r => sectionsCol.appendChild(r));
+    children.push(sectionsCol);
+  }
+  children.push(buildFooterGroupEl());
+
+  const sheet = buildPageEl(children);
+  sheet.classList.add("sheet-freeform");
+  return sheet;
+}
+
 function renderSheet() {
   const container = document.getElementById("sheets-container");
   container.innerHTML = "";
+
+  if (!data.printFriendly) {
+    // Default mode — one continuous document, no page breaks at all.
+    container.appendChild(buildFreeformPageEl());
+    return;
+  }
 
   const plan = computeSplitPlan();
   for (let i = 0; i < plan.pageCount; i++) {
@@ -1501,60 +1553,87 @@ document.getElementById("export-btn").addEventListener("click", async () => {
   };
 
   try {
-    // Build and capture ONE page at a time, from a container that's cleared
-    // and rebuilt fresh for each page — no two pages are ever in the DOM
-    // together during a capture, even briefly. Two earlier attempts (moving
-    // page 2 into an isolated fixed-position container, and hiding page 1
-    // with display:none while page 2 stayed in the live 2-page container)
-    // both produced the exact same bug: the second capture measured exactly
-    // double the correct page height. Since that happened identically both
-    // times, the issue wasn't really about what sat next to page 2 in the
-    // DOM — it pointed at something in calling html2pdf a second time in
-    // the same session. Rebuilding the container from scratch for each page
-    // sidesteps that entirely, since every capture is now a completely
-    // independent, single-page-only build.
-    //
-    // Every page's canvas is rendered through html2pdf's own worker chain
-    // (toCanvas/toPdf + .get) rather than calling html2canvas directly — the
-    // bundled CDN build doesn't necessarily expose html2canvas as a bare
-    // global, only html2pdf's own internal API is guaranteed to be there.
-    const plan = computeSplitPlan();
-    let pdf = null;
-    let pageWidth = 0;
-    let pageHeight = 0;
-
-    for (let i = 0; i < plan.pageCount; i++) {
+    if (!data.printFriendly) {
+      // FREEFORM (default) — one continuous document, sized to exactly fit
+      // its own content, no page breaks. Build it fresh, measure its actual
+      // rendered height, then hand jsPDF a custom page format matching that
+      // height exactly (rather than a fixed "letter" size) so there's only
+      // ever one page and nothing to split.
       container.innerHTML = "";
-      container.appendChild(buildPageContentEl(i, plan));
+      container.appendChild(buildFreeformPageEl());
       const pageEl = container.children[0];
 
-      if (plan.pageCount > 1) {
-        const num = document.createElement("div");
-        num.className = "page-number";
-        num.textContent = `Page ${i + 1} of ${plan.pageCount}`;
-        pageEl.appendChild(num);
+      const widthIn = 8.5; // matches the 816px sheet width at 96px/in
+      const heightIn = pageEl.offsetHeight / 96;
+
+      const freeformOpt = {
+        margin: 0,
+        filename: "western-rewind-pricing.pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: html2canvasOpt,
+        jsPDF: { unit: "in", format: [widthIn, heightIn], orientation: "portrait" }
+      };
+
+      const pdf = await html2pdf().set(freeformOpt).from(pageEl).toPdf().get("pdf");
+      pdf.save(freeformOpt.filename);
+    } else {
+      // PRINT-FRIENDLY — standard letter-sized pages, running headers, page
+      // numbers. Build and capture ONE page at a time, from a container that's
+      // cleared and rebuilt fresh for each page — no two pages are ever in the
+      // DOM together during a capture, even briefly. Two earlier attempts
+      // (moving page 2 into an isolated fixed-position container, and hiding
+      // page 1 with display:none while page 2 stayed in the live 2-page
+      // container) both produced the exact same bug: the second capture
+      // measured exactly double the correct page height. Since that happened
+      // identically both times, the issue wasn't really about what sat next
+      // to page 2 in the DOM — it pointed at something in calling html2pdf a
+      // second time in the same session. Rebuilding the container from
+      // scratch for each page sidesteps that entirely, since every capture is
+      // now a completely independent, single-page-only build.
+      //
+      // Every page's canvas is rendered through html2pdf's own worker chain
+      // (toCanvas/toPdf + .get) rather than calling html2canvas directly — the
+      // bundled CDN build doesn't necessarily expose html2canvas as a bare
+      // global, only html2pdf's own internal API is guaranteed to be there.
+      const plan = computeSplitPlan();
+      let pdf = null;
+      let pageWidth = 0;
+      let pageHeight = 0;
+
+      for (let i = 0; i < plan.pageCount; i++) {
+        container.innerHTML = "";
+        container.appendChild(buildPageContentEl(i, plan));
+        const pageEl = container.children[0];
+
+        if (plan.pageCount > 1) {
+          const num = document.createElement("div");
+          num.className = "page-number";
+          num.textContent = `Page ${i + 1} of ${plan.pageCount}`;
+          pageEl.appendChild(num);
+        }
+
+        if (i === 0) {
+          pdf = await html2pdf().set(opt).from(pageEl).toPdf().get("pdf");
+          pageWidth = pdf.internal.pageSize.getWidth();
+          pageHeight = pdf.internal.pageSize.getHeight();
+        } else {
+          const canvas = await html2pdf().set(opt).from(pageEl).toCanvas().get("canvas");
+          const imgData = canvas.toDataURL("image/jpeg", 0.98);
+          pdf.addPage();
+          pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
+        }
       }
 
-      if (i === 0) {
-        pdf = await html2pdf().set(opt).from(pageEl).toPdf().get("pdf");
-        pageWidth = pdf.internal.pageSize.getWidth();
-        pageHeight = pdf.internal.pageSize.getHeight();
-      } else {
-        const canvas = await html2pdf().set(opt).from(pageEl).toCanvas().get("canvas");
-        const imgData = canvas.toDataURL("image/jpeg", 0.98);
-        pdf.addPage();
-        pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
-      }
+      pdf.save(opt.filename);
     }
 
-    pdf.save(opt.filename);
     showToast("PDF downloaded");
   } catch (e) {
     console.error("PDF export failed:", e);
     showToast("Export failed — try again");
   } finally {
-    // rebuild the real (possibly multi-page) live preview, since the
-    // container was just used as a single-page scratch space during export
+    // rebuild the real live preview, since the container was just used as
+    // an export scratch space
     renderSheet();
     scaleWrap.style.transform = prevTransform;
     window.scrollTo(prevScrollX, prevScrollY);
