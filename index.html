@@ -396,19 +396,61 @@
   }
 
   /* ===== SHEET STYLES (mirrors source template exactly; do not alter) ===== */
+  .sheets-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
   .sheet {
     background: var(--bg);
     color: var(--ink);
     font-family: 'Courier Prime', monospace;
     width: 816px;
+    height: 1056px;
     box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+    box-sizing: border-box;
+    overflow: visible; /* never silently clip — a measurement edge-case should overflow visibly, not vanish */
+    position: relative;
   }
-  .page-wrap { padding: 56px 72px 56px; }
+  .page-number {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 26px;
+    text-align: center;
+    font-family: 'Courier Prime', monospace;
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .sheet + .sheet {
+    margin-top: 28px; /* visual gap between pages in preview; zeroed out during export */
+  }
+  .sheet-page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+  .page-wrap {
+    height: 100%;
+    box-sizing: border-box;
+    padding: 56px 72px 56px;
+    display: flex;
+    flex-direction: column;
+  }
 
   .header {
     display: flex; align-items: center; justify-content: space-between;
     padding-bottom: 20px; border-bottom: 2px solid var(--ink); margin-bottom: 14px;
+    flex-shrink: 0;
   }
+  .mini-header {
+    text-align: right;
+    margin-bottom: 24px;
+    flex-shrink: 0;
+  }
+  .mini-header-title { font-family: 'Playfair Display', serif; font-style: italic; font-size: 13px; color: var(--ink); line-height: 1.1; }
+  .mini-header-sub { font-family: 'Courier Prime', monospace; font-size: 7px; letter-spacing: 0.18em; color: var(--muted); text-transform: uppercase; margin-top: 3px; }
   .header-note-banner {
     font-family: 'Courier Prime', monospace;
     font-size: 10px;
@@ -417,9 +459,17 @@
     color: var(--ink);
     text-align: center;
     margin: 0 0 18px;
+    flex-shrink: 0;
   }
   .header-note-banner.header-note-big {
     font-size: 14px;
+  }
+  .sheet-sections-col {
+    flex-shrink: 0;
+  }
+  .footer-group {
+    margin-top: auto; /* pins this group to the bottom of the page it's on */
+    flex-shrink: 0;
   }
   .logo-block { flex-shrink: 0; }
   .logo-image {
@@ -599,39 +649,7 @@
   <div class="panel" id="preview-panel">
     <div class="preview-frame">
       <div class="scale-wrap" id="scale-wrap">
-        <div class="sheet" id="sheet">
-          <div class="page-wrap">
-            <div class="header">
-              <div class="logo-block">
-                <img class="logo-image" src="logo.png" alt="Western Rewind logo">
-                <!-- <div class="logo-tagline">Throwback Country</div> -->
-              </div>
-              <div class="header-right">
-                <div class="doc-label">Pricing &amp; Services Guide</div>
-                <div class="doc-sub">Event &amp; Entertainment Packages</div>
-              </div>
-            </div>
-
-            <div class="header-note-banner" id="sheet-header-note-top" style="display:none;"></div>
-
-            <div id="sheet-sections"></div>
-
-            <div class="notes-box">
-              <div class="notes-label">Please Note</div>
-              <div class="notes-text" id="sheet-notes"></div>
-            </div>
-
-            <div class="header-note-banner" id="sheet-header-note-bottom" style="display:none;"></div>
-
-            <div class="footer">
-              <div class="footer-left">Western Rewind · Throwback Country
-Pricing Guide · All figures in USD
-Subject to change without notice</div>
-              <div class="footer-right">Available for corporate events,
-weddings &amp; private engagements</div>
-            </div>
-          </div>
-        </div>
+        <div class="sheets-container" id="sheets-container"></div>
       </div>
     </div>
   </div>
@@ -1054,44 +1072,6 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;");
 }
 
-function renderSheet() {
-  const topNote = document.getElementById("sheet-header-note-top");
-  const bottomNote = document.getElementById("sheet-header-note-bottom");
-  const showTop = data.headerNote.visible && data.headerNote.position === "top";
-  const showBottom = data.headerNote.visible && data.headerNote.position === "bottom";
-  topNote.textContent = data.headerNote.text;
-  topNote.style.display = showTop ? "block" : "none";
-  topNote.classList.toggle("header-note-big", !!data.headerNote.big);
-  bottomNote.textContent = data.headerNote.text;
-  bottomNote.style.display = showBottom ? "block" : "none";
-  bottomNote.classList.toggle("header-note-big", !!data.headerNote.big);
-
-  const container = document.getElementById("sheet-sections");
-  container.innerHTML = "";
-
-  // only sections the user has turned on ever reach the sheet
-  const sections = data.sections.filter(s => s.visible);
-
-  // group half-layout sections into a two-col row, in original order
-  let i = 0;
-  while (i < sections.length) {
-    const s = sections[i];
-    if (s.layout === "half" && sections[i + 1] && sections[i + 1].layout === "half") {
-      const row = document.createElement("div");
-      row.className = "two-col";
-      row.appendChild(buildSectionEl(s));
-      row.appendChild(buildSectionEl(sections[i + 1]));
-      container.appendChild(row);
-      i += 2;
-    } else {
-      container.appendChild(buildSectionEl(s));
-      i += 1;
-    }
-  }
-
-  document.getElementById("sheet-notes").innerHTML = escapeHtml(data.notes).replace(/\n/g, "<br>");
-}
-
 // Inserts thousands separators into a plain number string, at any magnitude
 // (thousands, millions, billions, trillions, ...) by grouping digits in 3s
 // from the decimal point outward — same idea as the classic "every 3rd digit"
@@ -1169,21 +1149,259 @@ function buildSectionEl(section) {
   return wrap;
 }
 
+/* ---------- PAGINATION ---------- */
+// A "row" is one unit that can never be split across pages: either a single
+// full-width section, or a pair of half-width sections sitting side by side.
+function buildRows() {
+  const sections = data.sections.filter(s => s.visible);
+  const rows = [];
+  let i = 0;
+  while (i < sections.length) {
+    const s = sections[i];
+    if (s.layout === "half" && sections[i + 1] && sections[i + 1].layout === "half") {
+      const row = document.createElement("div");
+      row.className = "two-col";
+      row.appendChild(buildSectionEl(s));
+      row.appendChild(buildSectionEl(sections[i + 1]));
+      rows.push(row);
+      i += 2;
+    } else {
+      rows.push(buildSectionEl(s));
+      i += 1;
+    }
+  }
+  return rows;
+}
+
+function buildHeaderEl() {
+  const header = document.createElement("div");
+  header.className = "header";
+  header.innerHTML = `
+    <div class="logo-block">
+      <img class="logo-image" src="logo.png" alt="Western Rewind logo">
+    </div>
+    <div class="header-right">
+      <div class="doc-label">Pricing &amp; Services Guide</div>
+      <div class="doc-sub">Event &amp; Entertainment Packages</div>
+    </div>
+  `;
+  return header;
+}
+
+function buildMiniHeaderEl() {
+  const header = document.createElement("div");
+  header.className = "mini-header";
+  header.innerHTML = `
+    <div class="mini-header-title">Pricing &amp; Services Guide</div>
+    <div class="mini-header-sub">Western Rewind &middot; Throwback Country</div>
+  `;
+  return header;
+}
+
+function buildTopNoteEl() {
+  const el = document.createElement("div");
+  el.className = "header-note-banner" + (data.headerNote.big ? " header-note-big" : "");
+  el.textContent = data.headerNote.text;
+  return el;
+}
+
+function buildFooterGroupEl() {
+  const group = document.createElement("div");
+  group.className = "footer-group";
+
+  const notesBox = document.createElement("div");
+  notesBox.className = "notes-box";
+  notesBox.innerHTML = `
+    <div class="notes-label">Please Note</div>
+    <div class="notes-text">${escapeHtml(data.notes).replace(/\n/g, "<br>")}</div>
+  `;
+  group.appendChild(notesBox);
+
+  if (data.headerNote.visible && data.headerNote.position === "bottom") {
+    const bottomNote = document.createElement("div");
+    bottomNote.className = "header-note-banner" + (data.headerNote.big ? " header-note-big" : "");
+    bottomNote.textContent = data.headerNote.text;
+    group.appendChild(bottomNote);
+  }
+
+  const footer = document.createElement("div");
+  footer.className = "footer";
+  footer.innerHTML = `
+    <div class="footer-left">Western Rewind &middot; Throwback Country
+Pricing Guide &middot; All figures in USD
+Subject to change without notice</div>
+    <div class="footer-right">Available for corporate events,
+weddings &amp; private engagements</div>
+  `;
+  group.appendChild(footer);
+
+  return group;
+}
+
+// Available vertical space for content inside one page, i.e. the page height
+// minus the page-wrap's own top/bottom padding.
+const PAGE_HEIGHT = 1056;
+const PAGE_PAD = 56;
+const CONTENT_HEIGHT = PAGE_HEIGHT - PAGE_PAD * 2; // 944
+
+// Measures an element's rendered height at real page content width (672px,
+// i.e. 816 minus the page-wrap's left/right padding) without it ever being
+// visible, by attaching it off-screen, reading its height, then detaching it.
+function measureHeight(el) {
+  const stage = document.createElement("div");
+  stage.style.position = "absolute";
+  stage.style.left = "-9999px";
+  stage.style.top = "0";
+  stage.style.width = "672px";
+  stage.className = "sheet";
+  stage.style.height = "auto";
+  document.body.appendChild(stage);
+  stage.appendChild(el);
+  const height = el.offsetHeight;
+  stage.removeChild(el);
+  document.body.removeChild(stage);
+  return height;
+}
+
+// Measures the cumulative bottom offset of each row if they were stacked
+// starting at position 0 (i.e. how far down row i's bottom edge would sit).
+// This is position-independent — the same numbers apply whether the rows end
+// up starting right after a full header or a mini-header, since rows only
+// carry their own margin-bottom (no margin-top to collapse against whatever
+// precedes them).
+function measureRowBottoms(rows) {
+  const stage = document.createElement("div");
+  stage.style.position = "absolute";
+  stage.style.left = "-9999px";
+  stage.style.top = "0";
+  stage.style.width = "672px";
+  stage.className = "sheet";
+  stage.style.height = "auto";
+  document.body.appendChild(stage);
+  rows.forEach(r => stage.appendChild(r));
+  const bottoms = rows.map(r => r.offsetTop + r.offsetHeight);
+  rows.forEach(r => stage.removeChild(r));
+  document.body.removeChild(stage);
+  return bottoms;
+}
+
+function buildPageEl(bodyChildren) {
+  const sheet = document.createElement("div");
+  sheet.className = "sheet";
+  const pageWrap = document.createElement("div");
+  pageWrap.className = "page-wrap";
+  bodyChildren.forEach(el => pageWrap.appendChild(el));
+  sheet.appendChild(pageWrap);
+  return sheet;
+}
+
+function renderSheet() {
+  const container = document.getElementById("sheets-container");
+  container.innerHTML = "";
+
+  const rows = buildRows();
+  const showTopNote = data.headerNote.visible && data.headerNote.position === "top";
+
+  // Measure the fixed pieces once. Header/mini-header/top-note content is
+  // predictable (not row-count-dependent), footer-group's own height doesn't
+  // depend on what precedes it (no top margin on its first child), so all of
+  // these can be measured in isolation.
+  const headerHeight = measureHeight(buildHeaderEl());
+  const topNoteHeight = showTopNote ? measureHeight(buildTopNoteEl()) : 0;
+  const footerGroupHeight = measureHeight(buildFooterGroupEl());
+  const miniHeaderHeight = measureHeight(buildMiniHeaderEl());
+  const rowBottoms = rows.length ? measureRowBottoms(rows) : [];
+
+  const spaceBeforeRowsPage1 = headerHeight + topNoteHeight;
+
+  // How many rows fit on page 1 using only the header (not the footer group)
+  // as the space-before — this is "how much menu naturally fits on one page."
+  let splitIndex = -1; // last row index that fits on page 1; -1 means none
+  for (let i = 0; i < rowBottoms.length; i++) {
+    if (spaceBeforeRowsPage1 + rowBottoms[i] <= CONTENT_HEIGHT) splitIndex = i;
+    else break;
+  }
+
+  const allRowsFitPage1 = splitIndex === rows.length - 1;
+  const lastRowBottom = rows.length ? rowBottoms[rows.length - 1] : 0;
+  const wholeDocumentFits = allRowsFitPage1 &&
+    (spaceBeforeRowsPage1 + lastRowBottom + footerGroupHeight <= CONTENT_HEIGHT);
+
+  if (wholeDocumentFits) {
+    // SINGLE PAGE — everything fits, footer-group pinned to the bottom via
+    // margin-top:auto on the flex column, empty space (if any) is fine.
+    const page1Children = [buildHeaderEl()];
+    if (showTopNote) page1Children.push(buildTopNoteEl());
+    const sectionsCol = document.createElement("div");
+    sectionsCol.className = "sheet-sections-col";
+    rows.forEach(r => sectionsCol.appendChild(r));
+    page1Children.push(sectionsCol);
+    page1Children.push(buildFooterGroupEl());
+    container.appendChild(buildPageEl(page1Children));
+  } else if (allRowsFitPage1) {
+    // All menu rows fit on page 1, but adding the notes/footer group would
+    // overflow — so the whole menu stays on page 1, and just the notes/footer
+    // group moves to a page 2 of its own, pinned to its bottom.
+    const page1Children = [buildHeaderEl()];
+    if (showTopNote) page1Children.push(buildTopNoteEl());
+    const sectionsCol = document.createElement("div");
+    sectionsCol.className = "sheet-sections-col";
+    rows.forEach(r => sectionsCol.appendChild(r));
+    page1Children.push(sectionsCol);
+    container.appendChild(buildPageEl(page1Children));
+
+    const page2Children = [buildMiniHeaderEl(), buildFooterGroupEl()];
+    const page2El = buildPageEl(page2Children);
+    page2El.classList.add("sheet-page-break");
+    container.appendChild(page2El);
+  } else {
+    // The menu itself is too long for one page — split at the last row
+    // boundary that fits, never mid-row. Remaining rows plus the notes/footer
+    // group move to page 2, pinned to its bottom.
+    const page1Rows = splitIndex >= 0 ? rows.slice(0, splitIndex + 1) : [];
+    const page2Rows = splitIndex >= 0 ? rows.slice(splitIndex + 1) : rows;
+
+    const page1Children = [buildHeaderEl()];
+    if (showTopNote) page1Children.push(buildTopNoteEl());
+    const sectionsCol1 = document.createElement("div");
+    sectionsCol1.className = "sheet-sections-col";
+    page1Rows.forEach(r => sectionsCol1.appendChild(r));
+    page1Children.push(sectionsCol1);
+    container.appendChild(buildPageEl(page1Children));
+
+    const sectionsCol2 = document.createElement("div");
+    sectionsCol2.className = "sheet-sections-col";
+    page2Rows.forEach(r => sectionsCol2.appendChild(r));
+    const page2Children = [buildMiniHeaderEl(), sectionsCol2, buildFooterGroupEl()];
+    const page2El = buildPageEl(page2Children);
+    page2El.classList.add("sheet-page-break");
+    container.appendChild(page2El);
+  }
+
+  // page numbers only matter once there's more than one page to keep straight
+  const pageEls = Array.from(container.children);
+  if (pageEls.length > 1) {
+    pageEls.forEach((pageEl, idx) => {
+      const num = document.createElement("div");
+      num.className = "page-number";
+      num.textContent = `Page ${idx + 1} of ${pageEls.length}`;
+      pageEl.appendChild(num);
+    });
+  }
+}
+
 /* ---------- SCALE PREVIEW TO FIT SCREEN ---------- */
 function scalePreview() {
   const frame = document.querySelector(".preview-frame");
-  const sheet = document.getElementById("sheet");
+  const container = document.getElementById("sheets-container");
   const scaleWrap = document.getElementById("scale-wrap");
   const available = frame.clientWidth - 24;
   const sheetWidth = 816;
   const scale = Math.min(1, available / sheetWidth);
   scaleWrap.style.transform = `scale(${scale})`;
   scaleWrap.style.width = sheetWidth + "px";
-  frame.style.height = (sheet.getBoundingClientRect().height / (scaleWrap.dataset.prevScale || 1) * scale) + "px";
-  // set frame height to scaled sheet height so no clipped/blank space
-  const naturalHeight = sheet.offsetHeight;
+  const naturalHeight = container.offsetHeight;
   frame.style.height = (naturalHeight * scale) + 32 + "px";
-  scaleWrap.dataset.prevScale = scale;
 }
 
 /* ---------- TABS ---------- */
@@ -1255,11 +1473,17 @@ document.getElementById("export-btn").addEventListener("click", async () => {
   btn.disabled = true;
   btn.textContent = "Preparing…";
 
-  // render sheet at natural (unscaled) size for export, off the visible scale transform
-  const sheet = document.getElementById("sheet");
+  // render sheets at natural (unscaled) size for export, off the visible scale transform
+  const container = document.getElementById("sheets-container");
   const scaleWrap = document.getElementById("scale-wrap");
   const prevTransform = scaleWrap.style.transform;
   scaleWrap.style.transform = "none";
+
+  // the gap between stacked pages is only for on-screen readability — zero it
+  // out for the capture so page 1 ends at exactly one page height and the
+  // forced break lands precisely where we calculated it, not 28px later
+  const pages = Array.from(container.querySelectorAll(".sheet"));
+  pages.slice(1).forEach(p => { p.style.marginTop = "0"; });
 
   // html2canvas captures relative to the page's current scroll offset — if the
   // page is scrolled when export runs, it can miscalculate bounds and grab only
@@ -1283,15 +1507,17 @@ document.getElementById("export-btn").addEventListener("click", async () => {
       windowWidth: document.documentElement.scrollWidth,
       windowHeight: document.documentElement.scrollHeight
     },
-    jsPDF: { unit: "in", format: "letter", orientation: "portrait" }
+    jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
+    pagebreak: { mode: ["css"] }
   };
 
   try {
-    await html2pdf().set(opt).from(sheet).save();
+    await html2pdf().set(opt).from(container).save();
     showToast("PDF downloaded");
   } catch (e) {
     showToast("Export failed — try again");
   } finally {
+    pages.slice(1).forEach(p => { p.style.marginTop = ""; });
     scaleWrap.style.transform = prevTransform;
     window.scrollTo(prevScrollX, prevScrollY);
     btn.disabled = false;
