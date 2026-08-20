@@ -1295,21 +1295,17 @@ function buildPageEl(bodyChildren) {
   return sheet;
 }
 
-function renderSheet() {
-  const container = document.getElementById("sheets-container");
-  container.innerHTML = "";
-
+// Pure measurement pass — decides how many pages are needed and how many
+// rows land on page 1, without building or attaching any lasting DOM. The
+// rows built here exist only long enough to be measured, then are discarded;
+// actual display always builds its own fresh row elements from this plan.
+function computeSplitPlan() {
   const rows = buildRows();
   const showTopNote = data.headerNote.visible && data.headerNote.position === "top";
 
-  // Measure the fixed pieces once. Header/mini-header/top-note content is
-  // predictable (not row-count-dependent), footer-group's own height doesn't
-  // depend on what precedes it (no top margin on its first child), so all of
-  // these can be measured in isolation.
   const headerHeight = measureHeight(buildHeaderEl());
   const topNoteHeight = showTopNote ? measureHeight(buildTopNoteEl()) : 0;
   const footerGroupHeight = measureHeight(buildFooterGroupEl());
-  const miniHeaderHeight = measureHeight(buildMiniHeaderEl());
   const rowBottoms = rows.length ? measureRowBottoms(rows) : [];
 
   const spaceBeforeRowsPage1 = headerHeight + topNoteHeight;
@@ -1322,60 +1318,60 @@ function renderSheet() {
     else break;
   }
 
-  const allRowsFitPage1 = splitIndex === rows.length - 1;
-  const lastRowBottom = rows.length ? rowBottoms[rows.length - 1] : 0;
+  const totalRows = rows.length;
+  const allRowsFitPage1 = splitIndex === totalRows - 1;
+  const lastRowBottom = totalRows ? rowBottoms[totalRows - 1] : 0;
   const wholeDocumentFits = allRowsFitPage1 &&
     (spaceBeforeRowsPage1 + lastRowBottom + footerGroupHeight <= CONTENT_HEIGHT);
 
   if (wholeDocumentFits) {
-    // SINGLE PAGE — everything fits, footer-group pinned to the bottom via
-    // margin-top:auto on the flex column, empty space (if any) is fine.
-    const page1Children = [buildHeaderEl()];
-    if (showTopNote) page1Children.push(buildTopNoteEl());
-    const sectionsCol = document.createElement("div");
-    sectionsCol.className = "sheet-sections-col";
-    rows.forEach(r => sectionsCol.appendChild(r));
-    page1Children.push(sectionsCol);
-    page1Children.push(buildFooterGroupEl());
-    container.appendChild(buildPageEl(page1Children));
+    return { pageCount: 1, page1RowCount: totalRows, footerOnPage: 0, showTopNote };
   } else if (allRowsFitPage1) {
-    // All menu rows fit on page 1, but adding the notes/footer group would
-    // overflow — so the whole menu stays on page 1, and just the notes/footer
-    // group moves to a page 2 of its own, pinned to its bottom.
-    const page1Children = [buildHeaderEl()];
-    if (showTopNote) page1Children.push(buildTopNoteEl());
-    const sectionsCol = document.createElement("div");
-    sectionsCol.className = "sheet-sections-col";
-    rows.forEach(r => sectionsCol.appendChild(r));
-    page1Children.push(sectionsCol);
-    container.appendChild(buildPageEl(page1Children));
-
-    const page2Children = [buildMiniHeaderEl(), buildFooterGroupEl()];
-    const page2El = buildPageEl(page2Children);
-    page2El.classList.add("sheet-page-break");
-    container.appendChild(page2El);
+    return { pageCount: 2, page1RowCount: totalRows, footerOnPage: 1, showTopNote };
   } else {
-    // The menu itself is too long for one page — split at the last row
-    // boundary that fits, never mid-row. Remaining rows plus the notes/footer
-    // group move to page 2, pinned to its bottom.
-    const page1Rows = splitIndex >= 0 ? rows.slice(0, splitIndex + 1) : [];
-    const page2Rows = splitIndex >= 0 ? rows.slice(splitIndex + 1) : rows;
+    return { pageCount: 2, page1RowCount: splitIndex + 1, footerOnPage: 1, showTopNote };
+  }
+}
 
-    const page1Children = [buildHeaderEl()];
-    if (showTopNote) page1Children.push(buildTopNoteEl());
-    const sectionsCol1 = document.createElement("div");
-    sectionsCol1.className = "sheet-sections-col";
-    page1Rows.forEach(r => sectionsCol1.appendChild(r));
-    page1Children.push(sectionsCol1);
-    container.appendChild(buildPageEl(page1Children));
+// Builds ONE page's content fresh (new elements every call — never reuses a
+// node that might already be attached elsewhere) given the plan and which
+// page index (0-based) is being built.
+function buildPageContentEl(pageIndex, plan) {
+  const allRows = buildRows(); // fresh instances every call, by design
+  const page1Rows = allRows.slice(0, plan.page1RowCount);
+  const page2Rows = allRows.slice(plan.page1RowCount);
 
-    const sectionsCol2 = document.createElement("div");
-    sectionsCol2.className = "sheet-sections-col";
-    page2Rows.forEach(r => sectionsCol2.appendChild(r));
-    const page2Children = [buildMiniHeaderEl(), sectionsCol2, buildFooterGroupEl()];
-    const page2El = buildPageEl(page2Children);
-    page2El.classList.add("sheet-page-break");
-    container.appendChild(page2El);
+  if (pageIndex === 0) {
+    const children = [buildHeaderEl()];
+    if (plan.showTopNote) children.push(buildTopNoteEl());
+    if (page1Rows.length) {
+      const sectionsCol = document.createElement("div");
+      sectionsCol.className = "sheet-sections-col";
+      page1Rows.forEach(r => sectionsCol.appendChild(r));
+      children.push(sectionsCol);
+    }
+    if (plan.footerOnPage === 0) children.push(buildFooterGroupEl());
+    return buildPageEl(children);
+  } else {
+    const children = [buildMiniHeaderEl()];
+    if (page2Rows.length) {
+      const sectionsCol = document.createElement("div");
+      sectionsCol.className = "sheet-sections-col";
+      page2Rows.forEach(r => sectionsCol.appendChild(r));
+      children.push(sectionsCol);
+    }
+    if (plan.footerOnPage === 1) children.push(buildFooterGroupEl());
+    return buildPageEl(children);
+  }
+}
+
+function renderSheet() {
+  const container = document.getElementById("sheets-container");
+  container.innerHTML = "";
+
+  const plan = computeSplitPlan();
+  for (let i = 0; i < plan.pageCount; i++) {
+    container.appendChild(buildPageContentEl(i, plan));
   }
 
   // page numbers only matter once there's more than one page to keep straight
@@ -1488,8 +1484,6 @@ document.getElementById("export-btn").addEventListener("click", async () => {
   window.scrollTo(0, 0);
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
-  const pageEls = Array.from(container.querySelectorAll(".sheet"));
-
   const html2canvasOpt = {
     scale: 2,
     useCORS: true,
@@ -1507,48 +1501,50 @@ document.getElementById("export-btn").addEventListener("click", async () => {
   };
 
   try {
-    // Build each page as its own image and add it as its own PDF page, rather
-    // than handing html2pdf the whole multi-page container and letting its
-    // automatic slicer decide where breaks go — when content lands on an
-    // exact page-height boundary (as ours always does, by design), that
-    // auto-slicing can double up with a forced break and insert a stray
-    // blank page. Doing it one page at a time removes that ambiguity.
+    // Build and capture ONE page at a time, from a container that's cleared
+    // and rebuilt fresh for each page — no two pages are ever in the DOM
+    // together during a capture, even briefly. Two earlier attempts (moving
+    // page 2 into an isolated fixed-position container, and hiding page 1
+    // with display:none while page 2 stayed in the live 2-page container)
+    // both produced the exact same bug: the second capture measured exactly
+    // double the correct page height. Since that happened identically both
+    // times, the issue wasn't really about what sat next to page 2 in the
+    // DOM — it pointed at something in calling html2pdf a second time in
+    // the same session. Rebuilding the container from scratch for each page
+    // sidesteps that entirely, since every capture is now a completely
+    // independent, single-page-only build.
     //
     // Every page's canvas is rendered through html2pdf's own worker chain
-    // (toCanvas/.get) rather than calling html2canvas directly — the bundled
-    // CDN build doesn't necessarily expose html2canvas as a bare global, only
-    // html2pdf's own internal API is guaranteed to be there.
-    //
-    // For pages after the first, every OTHER page is temporarily hidden with
-    // display:none (not moved anywhere) so the target page is the only thing
-    // present in the stacked layout during capture — it stays exactly where
-    // it already sits in normal document flow. An earlier attempt tried
-    // relocating the page into an isolated fixed-position container instead,
-    // but that caused html2canvas to measure double the correct page height
-    // (likely a quirk of position:fixed interacting with its document-cloning
-    // step) — simply hiding siblings avoids repositioning anything at all.
-    async function capturePageCanvas(pageEl, allPages) {
-      const others = allPages.filter(p => p !== pageEl);
-      const prevDisplay = others.map(p => p.style.display);
-      others.forEach(p => { p.style.display = "none"; });
+    // (toCanvas/toPdf + .get) rather than calling html2canvas directly — the
+    // bundled CDN build doesn't necessarily expose html2canvas as a bare
+    // global, only html2pdf's own internal API is guaranteed to be there.
+    const plan = computeSplitPlan();
+    let pdf = null;
+    let pageWidth = 0;
+    let pageHeight = 0;
 
-      const canvas = await html2pdf().set(opt).from(pageEl).toCanvas().get("canvas");
+    for (let i = 0; i < plan.pageCount; i++) {
+      container.innerHTML = "";
+      container.appendChild(buildPageContentEl(i, plan));
+      const pageEl = container.children[0];
 
-      others.forEach((p, idx) => { p.style.display = prevDisplay[idx]; });
+      if (plan.pageCount > 1) {
+        const num = document.createElement("div");
+        num.className = "page-number";
+        num.textContent = `Page ${i + 1} of ${plan.pageCount}`;
+        pageEl.appendChild(num);
+      }
 
-      return canvas;
-    }
-
-    const pdf = await html2pdf().set(opt).from(pageEls[0]).toPdf().get("pdf");
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-
-    for (let i = 1; i < pageEls.length; i++) {
-      const canvas = await capturePageCanvas(pageEls[i], pageEls);
-      const imgData = canvas.toDataURL("image/jpeg", 0.98);
-      pdf.addPage();
-      pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
+      if (i === 0) {
+        pdf = await html2pdf().set(opt).from(pageEl).toPdf().get("pdf");
+        pageWidth = pdf.internal.pageSize.getWidth();
+        pageHeight = pdf.internal.pageSize.getHeight();
+      } else {
+        const canvas = await html2pdf().set(opt).from(pageEl).toCanvas().get("canvas");
+        const imgData = canvas.toDataURL("image/jpeg", 0.98);
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
+      }
     }
 
     pdf.save(opt.filename);
@@ -1557,10 +1553,14 @@ document.getElementById("export-btn").addEventListener("click", async () => {
     console.error("PDF export failed:", e);
     showToast("Export failed — try again");
   } finally {
+    // rebuild the real (possibly multi-page) live preview, since the
+    // container was just used as a single-page scratch space during export
+    renderSheet();
     scaleWrap.style.transform = prevTransform;
     window.scrollTo(prevScrollX, prevScrollY);
     btn.disabled = false;
     btn.textContent = "Export PDF";
+    requestAnimationFrame(scalePreview);
   }
 });
 
