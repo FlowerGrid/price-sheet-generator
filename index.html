@@ -547,7 +547,7 @@
             <div class="header">
               <div class="logo-block">
                 <img class="logo-image" src="logo.png" alt="Western Rewind logo">
-                <div class="logo-tagline">Throwback Country</div>
+                <!-- <div class="logo-tagline">Throwback Country</div> -->
               </div>
               <div class="header-right">
                 <div class="doc-label">Pricing &amp; Services Guide</div>
@@ -823,7 +823,13 @@ function renderEditForm() {
         priceInput.className = "field-input";
         priceInput.inputMode = "decimal";
         priceInput.value = item.price;
-        priceInput.addEventListener("input", () => { item.price = priceInput.value; persist(); renderSheet(); updateRangeValidity(); });
+        priceInput.addEventListener("input", () => {
+          stripLeadingZeros(priceInput);
+          item.price = priceInput.value;
+          persist();
+          renderSheet();
+          updateRangeValidity();
+        });
         wrap.appendChild(priceInput);
         priceRow.appendChild(wrap);
         card.appendChild(priceRow);
@@ -840,7 +846,13 @@ function renderEditForm() {
         maxInput.placeholder = "Leave blank for a single price";
         maxInput.value = item.priceMax || "";
         maxInput.id = `max-price-${section.id}-${iIdx}`;
-        maxInput.addEventListener("input", () => { item.priceMax = maxInput.value; persist(); renderSheet(); updateRangeValidity(); });
+        maxInput.addEventListener("input", () => {
+          stripLeadingZeros(maxInput);
+          item.priceMax = maxInput.value;
+          persist();
+          renderSheet();
+          updateRangeValidity();
+        });
         maxWrap.appendChild(maxInput);
         maxRow.appendChild(maxWrap);
 
@@ -878,6 +890,20 @@ function renderEditForm() {
 }
 
 /* ---------- VALIDATION: PRICE RANGES ---------- */
+function stripLeadingZeros(inputEl) {
+  const original = inputEl.value;
+  const cursorPos = inputEl.selectionStart;
+  // strip zeros that lead a longer number (e.g. "05" -> "5"), but leave a lone "0"
+  // or a leading "0." (e.g. "0.5") alone since those are valid as typed
+  const stripped = original.replace(/^0+(?=\d)/, "");
+  if (stripped !== original) {
+    const removedCount = original.length - stripped.length;
+    inputEl.value = stripped;
+    const newPos = Math.max(0, cursorPos - removedCount);
+    inputEl.setSelectionRange(newPos, newPos);
+  }
+}
+
 function parsePriceNum(str) {
   if (str === undefined || str === null) return NaN;
   const cleaned = String(str).replace(/[^0-9.]/g, "");
