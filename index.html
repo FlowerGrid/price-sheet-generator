@@ -351,6 +351,18 @@
     margin-top: 2px;
   }
 
+  .header-note-position {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--app-line);
+  }
+  .header-note-position-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
   .reset-row {
     margin-top: 22px;
     text-align: center;
@@ -396,6 +408,18 @@
   .header {
     display: flex; align-items: center; justify-content: space-between;
     padding-bottom: 20px; border-bottom: 2px solid var(--ink); margin-bottom: 14px;
+  }
+  .header-note-banner {
+    font-family: 'Courier Prime', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--ink);
+    text-align: center;
+    margin: 0 0 18px;
+  }
+  .header-note-banner.header-note-big {
+    font-size: 14px;
   }
   .logo-block { flex-shrink: 0; }
   .logo-image {
@@ -514,6 +538,39 @@
     <div class="locked-hint">Item names, descriptions and prices are yours to edit. Layout, fonts and colors are locked so every sheet stays on-brand. Uncheck "show on sheet" to leave an item off without deleting it.</div>
 
     <div class="global-toggle-card">
+      <span class="field-label">Header note (one-liner shown to the reader)</span>
+      <input type="text" class="field-input" id="header-note-text" maxlength="140" style="margin-top:6px;">
+
+      <label class="global-toggle" style="margin-top:12px;">
+        <input type="checkbox" id="header-note-visible-toggle">
+        <span>
+          <span class="global-toggle-title">Show note on sheet</span>
+        </span>
+      </label>
+
+      <label class="global-toggle" style="margin-top:10px;">
+        <input type="checkbox" id="header-note-big-toggle">
+        <span>
+          <span class="global-toggle-title">Bigger text</span>
+        </span>
+      </label>
+
+      <div class="header-note-position">
+        <span class="field-label">Position</span>
+        <div class="header-note-position-options">
+          <label class="section-toggle">
+            <input type="radio" name="header-note-position" id="header-note-pos-top" value="top">
+            Above the menu
+          </label>
+          <label class="section-toggle">
+            <input type="radio" name="header-note-position" id="header-note-pos-bottom" value="bottom">
+            Below the menu (under Please Note)
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="global-toggle-card">
       <label class="global-toggle">
         <input type="checkbox" id="starting-at-toggle">
         <span>
@@ -555,12 +612,16 @@
               </div>
             </div>
 
+            <div class="header-note-banner" id="sheet-header-note-top" style="display:none;"></div>
+
             <div id="sheet-sections"></div>
 
             <div class="notes-box">
               <div class="notes-label">Please Note</div>
               <div class="notes-text" id="sheet-notes"></div>
             </div>
+
+            <div class="header-note-banner" id="sheet-header-note-bottom" style="display:none;"></div>
 
             <div class="footer">
               <div class="footer-left">Western Rewind · Throwback Country
@@ -606,7 +667,13 @@ const DEFAULT_DATA = {
     ]}
   ],
   notes: "All pricing is based on standard local engagements. Travel & lodging (3 hotel rooms + fuel) are billed above and beyond the package pricing shown above and will be itemized in your formal quote. Ceremony packages requiring a separate venue location are available — please inquire. Final pricing is confirmed in your signed agreement.",
-  startingAt: false
+  startingAt: false,
+  headerNote: {
+    text: "Ask about a special discount when you bundle multiple services",
+    visible: true,
+    position: "top",
+    big: false
+  }
 };
 
 const STORAGE_KEY = "wr-pricing-data-v1";
@@ -615,7 +682,20 @@ let data = JSON.parse(JSON.stringify(DEFAULT_DATA));
 function loadSaved() {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw) data = JSON.parse(raw);
+    if (raw) {
+      const saved = JSON.parse(raw);
+      // merge onto a fresh default so any field added after this session was
+      // saved (e.g. a saved session from before "headerNote" existed) still
+      // gets a safe default instead of coming back undefined
+      data = Object.assign(JSON.parse(JSON.stringify(DEFAULT_DATA)), saved);
+      // headerNote is nested, so a plain top-level merge isn't enough — merge
+      // its fields individually too, or a session saved before "big" existed
+      // would wipe out the default for "big" along with the rest of the object
+      data.headerNote = Object.assign(
+        JSON.parse(JSON.stringify(DEFAULT_DATA.headerNote)),
+        saved.headerNote || {}
+      );
+    }
   } catch (e) { /* ignore, use defaults */ }
 }
 function persist() {
@@ -624,6 +704,41 @@ function persist() {
 
 /* ---------- RENDER: EDIT FORM ---------- */
 function renderEditForm() {
+  const headerNoteText = document.getElementById("header-note-text");
+  headerNoteText.value = data.headerNote.text;
+  headerNoteText.oninput = () => {
+    data.headerNote.text = headerNoteText.value;
+    persist();
+    renderSheet();
+  };
+
+  const headerNoteVisible = document.getElementById("header-note-visible-toggle");
+  headerNoteVisible.checked = !!data.headerNote.visible;
+  headerNoteVisible.onchange = () => {
+    data.headerNote.visible = headerNoteVisible.checked;
+    persist();
+    renderSheet();
+  };
+
+  const headerNoteBig = document.getElementById("header-note-big-toggle");
+  headerNoteBig.checked = !!data.headerNote.big;
+  headerNoteBig.onchange = () => {
+    data.headerNote.big = headerNoteBig.checked;
+    persist();
+    renderSheet();
+  };
+
+  const posTop = document.getElementById("header-note-pos-top");
+  const posBottom = document.getElementById("header-note-pos-bottom");
+  posTop.checked = data.headerNote.position === "top";
+  posBottom.checked = data.headerNote.position === "bottom";
+  posTop.onchange = () => {
+    if (posTop.checked) { data.headerNote.position = "top"; persist(); renderSheet(); }
+  };
+  posBottom.onchange = () => {
+    if (posBottom.checked) { data.headerNote.position = "bottom"; persist(); renderSheet(); }
+  };
+
   const startingAtToggle = document.getElementById("starting-at-toggle");
   startingAtToggle.checked = !!data.startingAt;
   startingAtToggle.onchange = () => {
@@ -940,6 +1055,17 @@ function escapeHtml(str) {
 }
 
 function renderSheet() {
+  const topNote = document.getElementById("sheet-header-note-top");
+  const bottomNote = document.getElementById("sheet-header-note-bottom");
+  const showTop = data.headerNote.visible && data.headerNote.position === "top";
+  const showBottom = data.headerNote.visible && data.headerNote.position === "bottom";
+  topNote.textContent = data.headerNote.text;
+  topNote.style.display = showTop ? "block" : "none";
+  topNote.classList.toggle("header-note-big", !!data.headerNote.big);
+  bottomNote.textContent = data.headerNote.text;
+  bottomNote.style.display = showBottom ? "block" : "none";
+  bottomNote.classList.toggle("header-note-big", !!data.headerNote.big);
+
   const container = document.getElementById("sheet-sections");
   container.innerHTML = "";
 
