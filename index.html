@@ -1144,6 +1144,17 @@ function formatPrice(item) {
   return "$" + escapeHtml(priceInfo.formatted);
 }
 
+// Note-style prices (Travel & Lodging's "Quoted separately") and free-text
+// prices (anything typed that isn't a clean number, like "Ask us") both read
+// as a short phrase rather than a bold dollar figure, so both get the same
+// smaller size instead of the full price treatment.
+function isSmallPriceText(item) {
+  if (item.isNote) return true;
+  const priceStr = String(item.price ?? "").trim();
+  if (priceStr === "") return false;
+  return !parsePriceValue(priceStr).isNumeric;
+}
+
 function buildSectionEl(section) {
   const visibleItems = section.items.filter(it => it.visible);
   const wrap = document.createElement("div");
@@ -1162,7 +1173,7 @@ function buildSectionEl(section) {
             <div class="item-desc">${escapeHtml(item.desc).replace(/\n/g, "<br>")}</div>
           </td>
           <td>
-            <div class="price" style="${item.isNote ? 'font-size:11px;' : ''}">${formatPrice(item)}</div>
+            <div class="price" style="${isSmallPriceText(item) ? 'font-size:11px;' : ''}">${formatPrice(item)}</div>
           </td>
         </tr>
       `).join("")}
