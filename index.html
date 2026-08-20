@@ -1479,12 +1479,6 @@ document.getElementById("export-btn").addEventListener("click", async () => {
   const prevTransform = scaleWrap.style.transform;
   scaleWrap.style.transform = "none";
 
-  // the gap between stacked pages is only for on-screen readability — zero it
-  // out for the capture so page 1 ends at exactly one page height and the
-  // forced break lands precisely where we calculated it, not 28px later
-  const pages = Array.from(container.querySelectorAll(".sheet"));
-  pages.slice(1).forEach(p => { p.style.marginTop = "0"; });
-
   // html2canvas captures relative to the page's current scroll offset — if the
   // page is scrolled when export runs, it can miscalculate bounds and grab only
   // part of the sheet. Force the page to the top and pin the capture origin
@@ -1494,30 +1488,51 @@ document.getElementById("export-btn").addEventListener("click", async () => {
   window.scrollTo(0, 0);
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
+  const pageEls = Array.from(container.querySelectorAll(".sheet"));
+
+  const html2canvasOpt = {
+    scale: 2,
+    useCORS: true,
+    backgroundColor: "#FAFAF8",
+    scrollX: 0,
+    scrollY: 0,
+    windowWidth: document.documentElement.scrollWidth,
+    windowHeight: document.documentElement.scrollHeight
+  };
+
   const opt = {
     margin: 0,
     filename: "western-rewind-pricing.pdf",
     image: { type: "jpeg", quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      backgroundColor: "#FAFAF8",
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: document.documentElement.scrollWidth,
-      windowHeight: document.documentElement.scrollHeight
-    },
-    jsPDF: { unit: "in", format: "letter", orientation: "portrait" },
-    pagebreak: { mode: ["css"] }
+    html2canvas: html2canvasOpt,
+    jsPDF: { unit: "in", format: "letter", orientation: "portrait" }
   };
 
   try {
-    await html2pdf().set(opt).from(container).save();
+    // Build each page as its own image and add it as its own PDF page, rather
+    // than handing html2pdf the whole multi-page container and letting its
+    // automatic slicer decide where breaks go — when content lands on an
+    // exact page-height boundary (as ours always does, by design), that
+    // auto-slicing can double up with a forced break and insert a stray
+    // blank page. Doing it one page at a time removes that ambiguity.
+    const worker = html2pdf().set(opt).from(pageEls[0]).toPdf();
+    const pdf = await worker.get("pdf");
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+
+    for (let i = 1; i < pageEls.length; i++) {
+      const canvas = await html2canvas(pageEls[i], html2canvasOpt);
+      const imgData = canvas.toDataURL("image/jpeg", 0.98);
+      pdf.addPage();
+      pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
+    }
+
+    pdf.save(opt.filename);
     showToast("PDF downloaded");
   } catch (e) {
     showToast("Export failed — try again");
   } finally {
-    pages.slice(1).forEach(p => { p.style.marginTop = ""; });
     scaleWrap.style.transform = prevTransform;
     window.scrollTo(prevScrollX, prevScrollY);
     btn.disabled = false;
