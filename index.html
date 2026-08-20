@@ -182,7 +182,15 @@
     flex-wrap: wrap;
     justify-content: space-between;
     gap: 6px 10px;
-    padding-bottom: 6px;
+    margin-bottom: 6px;
+  }
+
+  .edit-section-toggles-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 16px;
+    padding-bottom: 8px;
     border-bottom: 1.5px solid var(--app-ink);
     margin-bottom: 10px;
   }
@@ -294,6 +302,41 @@
     margin: 4px 0 16px;
   }
 
+  .global-toggle-card {
+    background: #fff;
+    border: 1px solid var(--app-line);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 18px;
+  }
+  .global-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .global-toggle input {
+    accent-color: var(--app-accent);
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .global-toggle-title {
+    display: block;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--app-ink);
+    font-weight: 700;
+  }
+  .global-toggle-sub {
+    display: block;
+    font-size: 9.5px;
+    color: var(--muted);
+    line-height: 1.5;
+    margin-top: 2px;
+  }
+
   .reset-row {
     margin-top: 22px;
     text-align: center;
@@ -358,6 +401,14 @@
   .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
   .section-label { font-family: serif; font-size: 13px; letter-spacing: 0.18em; color: var(--ink); text-transform: uppercase; flex-shrink: 0; }
   .section-rule { flex: 1; height: 1px; background: var(--rule); }
+  .section-starting-at {
+    font-family: 'Courier Prime', monospace;
+    font-size: 8.5px;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
 
   .pricing-table { width: 100%; border-collapse: collapse; }
   .pricing-table tr { border-bottom: 1px solid var(--rule); }
@@ -447,6 +498,17 @@
   <!-- EDIT PANEL -->
   <div class="panel active" id="edit-panel">
     <div class="locked-hint">Item names, descriptions and prices are yours to edit. Layout, fonts and colors are locked so every sheet stays on-brand. Uncheck "show on sheet" to leave an item off without deleting it.</div>
+
+    <div class="global-toggle-card">
+      <label class="global-toggle">
+        <input type="checkbox" id="starting-at-toggle">
+        <span>
+          <span class="global-toggle-title">Mark pricing as "Starting At"</span>
+          <span class="global-toggle-sub">Adds a single note at the top of the document. Individual prices stay as-is.</span>
+        </span>
+      </label>
+    </div>
+
     <div id="edit-sections"></div>
 
     <div class="edit-section">
@@ -529,7 +591,8 @@ const DEFAULT_DATA = {
       { name: "Travel & Lodging", desc: "3 hotel rooms + fuel costs", price: "Quoted separately", visible: true, isNote: true }
     ]}
   ],
-  notes: "All pricing is based on standard local engagements. Travel & lodging (3 hotel rooms + fuel) are billed above and beyond the package pricing shown above and will be itemized in your formal quote. Ceremony packages requiring a separate venue location are available — please inquire. Final pricing is confirmed in your signed agreement."
+  notes: "All pricing is based on standard local engagements. Travel & lodging (3 hotel rooms + fuel) are billed above and beyond the package pricing shown above and will be itemized in your formal quote. Ceremony packages requiring a separate venue location are available — please inquire. Final pricing is confirmed in your signed agreement.",
+  startingAt: false
 };
 
 const STORAGE_KEY = "wr-pricing-data-v1";
@@ -547,6 +610,14 @@ function persist() {
 
 /* ---------- RENDER: EDIT FORM ---------- */
 function renderEditForm() {
+  const startingAtToggle = document.getElementById("starting-at-toggle");
+  startingAtToggle.checked = !!data.startingAt;
+  startingAtToggle.onchange = () => {
+    data.startingAt = startingAtToggle.checked;
+    persist();
+    renderSheet();
+  };
+
   const container = document.getElementById("edit-sections");
   container.innerHTML = "";
 
@@ -561,21 +632,6 @@ function renderEditForm() {
     title.className = "edit-section-title";
     title.textContent = section.label;
     titleRow.appendChild(title);
-
-    const secLabel = document.createElement("label");
-    secLabel.className = "section-toggle";
-    const secCb = document.createElement("input");
-    secCb.type = "checkbox";
-    secCb.checked = section.visible;
-    secCb.addEventListener("change", () => {
-      section.visible = secCb.checked;
-      secEl.className = "edit-section" + (section.visible ? "" : " section-off");
-      persist();
-      renderSheet();
-    });
-    secLabel.appendChild(secCb);
-    secLabel.appendChild(document.createTextNode("Show section"));
-    titleRow.appendChild(secLabel);
 
     const secMove = document.createElement("div");
     secMove.className = "move-btn-group";
@@ -612,6 +668,26 @@ function renderEditForm() {
     titleRow.appendChild(secMove);
 
     secEl.appendChild(titleRow);
+
+    const toggleRow = document.createElement("div");
+    toggleRow.className = "edit-section-toggles-row";
+
+    const secLabel = document.createElement("label");
+    secLabel.className = "section-toggle";
+    const secCb = document.createElement("input");
+    secCb.type = "checkbox";
+    secCb.checked = section.visible;
+    secCb.addEventListener("change", () => {
+      section.visible = secCb.checked;
+      secEl.className = "edit-section" + (section.visible ? "" : " section-off");
+      persist();
+      renderSheet();
+    });
+    secLabel.appendChild(secCb);
+    secLabel.appendChild(document.createTextNode("Show section"));
+    toggleRow.appendChild(secLabel);
+
+    secEl.appendChild(toggleRow);
 
     section.items.forEach((item, iIdx) => {
       const card = document.createElement("div");
@@ -820,6 +896,7 @@ function buildSectionEl(section) {
     <div class="section-header">
       <div class="section-label">${escapeHtml(section.label)}</div>
       <div class="section-rule"></div>
+      ${data.startingAt ? `<div class="section-starting-at">Starting At</div>` : ""}
     </div>
     <table class="pricing-table">
       ${visibleItems.map(item => `
