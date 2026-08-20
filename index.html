@@ -1515,14 +1515,18 @@ document.getElementById("export-btn").addEventListener("click", async () => {
     // exact page-height boundary (as ours always does, by design), that
     // auto-slicing can double up with a forced break and insert a stray
     // blank page. Doing it one page at a time removes that ambiguity.
-    const worker = html2pdf().set(opt).from(pageEls[0]).toPdf();
-    const pdf = await worker.get("pdf");
+    //
+    // Every page's canvas is rendered through html2pdf's own worker chain
+    // (toCanvas/.get) rather than calling html2canvas directly — the bundled
+    // CDN build doesn't necessarily expose html2canvas as a bare global, only
+    // html2pdf's own internal API is guaranteed to be there.
+    const pdf = await html2pdf().set(opt).from(pageEls[0]).toPdf().get("pdf");
 
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
 
     for (let i = 1; i < pageEls.length; i++) {
-      const canvas = await html2canvas(pageEls[i], html2canvasOpt);
+      const canvas = await html2pdf().set(opt).from(pageEls[i]).toCanvas().get("canvas");
       const imgData = canvas.toDataURL("image/jpeg", 0.98);
       pdf.addPage();
       pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
@@ -1531,6 +1535,7 @@ document.getElementById("export-btn").addEventListener("click", async () => {
     pdf.save(opt.filename);
     showToast("PDF downloaded");
   } catch (e) {
+    console.error("PDF export failed:", e);
     showToast("Export failed — try again");
   } finally {
     scaleWrap.style.transform = prevTransform;
