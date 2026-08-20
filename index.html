@@ -694,12 +694,12 @@ const DEFAULT_DATA = {
   }
 };
 
-const STORAGE_KEY = "wr-pricing-data-v1";
+const STORAGE_KEY = "wr-pricing-data-v2";
 let data = JSON.parse(JSON.stringify(DEFAULT_DATA));
 
 function loadSaved() {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const saved = JSON.parse(raw);
       // merge onto a fresh default so any field added after this session was
@@ -717,7 +717,7 @@ function loadSaved() {
   } catch (e) { /* ignore, use defaults */ }
 }
 function persist() {
-  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
 }
 
 /* ---------- RENDER: EDIT FORM ---------- */
