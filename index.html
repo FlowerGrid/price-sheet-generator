@@ -800,7 +800,7 @@ function renderEditForm() {
       // price
       const priceRow = document.createElement("div");
       priceRow.className = "field-row";
-      priceRow.innerHTML = `<span class="field-label">${item.isNote ? "Price note (e.g. \"Quoted separately\")" : "Price"}</span>`;
+      priceRow.innerHTML = `<span class="field-label">${item.isNote ? "Price note (e.g. \"Quoted separately\")" : "Price (number or short note)"}</span>`;
       if (item.isNote) {
         const priceInput = document.createElement("input");
         priceInput.className = "field-input";
@@ -817,11 +817,9 @@ function renderEditForm() {
           maxErrorText.style.display = invalid ? "block" : "none";
         };
 
-        const wrap = document.createElement("div");
-        wrap.className = "price-input-wrap";
         const priceInput = document.createElement("input");
         priceInput.className = "field-input";
-        priceInput.inputMode = "decimal";
+        priceInput.placeholder = '1200 or "Quoted Separately"';
         priceInput.value = item.price;
         priceInput.addEventListener("input", () => {
           stripLeadingZeros(priceInput);
@@ -830,8 +828,7 @@ function renderEditForm() {
           renderSheet();
           updateRangeValidity();
         });
-        wrap.appendChild(priceInput);
-        priceRow.appendChild(wrap);
+        priceRow.appendChild(priceInput);
         card.appendChild(priceRow);
 
         // optional max price — filling this in turns the price into a range
@@ -969,11 +966,53 @@ function renderSheet() {
   document.getElementById("sheet-notes").innerHTML = escapeHtml(data.notes).replace(/\n/g, "<br>");
 }
 
+// Inserts thousands separators into a plain number string, at any magnitude
+// (thousands, millions, billions, trillions, ...) by grouping digits in 3s
+// from the decimal point outward — same idea as the classic "every 3rd digit"
+// modulo approach, just expressed as a regex lookahead so there's no upper limit.
+// Anything that isn't a clean number (e.g. free text) is returned untouched.
+function formatWithCommas(value) {
+  const str = String(value ?? "").trim();
+  if (str === "") return "";
+  const cleaned = str.replace(/,/g, "");
+  if (!/^-?\d+(\.\d+)?$/.test(cleaned)) return str; // not a plain number — leave as typed
+  const negative = cleaned.startsWith("-");
+  const abs = negative ? cleaned.slice(1) : cleaned;
+  const [intPart, decPart] = abs.split(".");
+  const withCommas = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (negative ? "-" : "") + withCommas + (decPart !== undefined ? "." + decPart : "");
+}
+
+// Decides whether a typed value is "trying to be a price" (only digits, commas,
+// periods, whitespace, and optional $ signs) versus free text like "Ask us" or
+// "Quoted separately". Numeric values get cleaned up and comma-formatted;
+// anything else is left exactly as typed, with no $ sign added.
+function parsePriceValue(str) {
+  const withoutDollar = str.replace(/\$/g, "").trim();
+  const looksNumeric = withoutDollar !== "" && /^[\d,.\s]+$/.test(withoutDollar);
+  if (!looksNumeric) return { isNumeric: false, text: str.trim() };
+  const cleaned = withoutDollar.replace(/[,\s]/g, "");
+  return { isNumeric: true, formatted: formatWithCommas(cleaned) };
+}
+
 function formatPrice(item) {
   if (item.isNote) return escapeHtml(item.price);
+
+  const priceStr = String(item.price ?? "").trim();
+  if (priceStr === "") return ""; // blank price — no $ sign, nothing shown
+
+  const priceInfo = parsePriceValue(priceStr);
+  if (!priceInfo.isNumeric) return escapeHtml(priceInfo.text); // free text — no $ sign
+
   const hasMax = item.priceMax !== undefined && String(item.priceMax).trim() !== "";
-  if (hasMax) return "$" + escapeHtml(item.price) + " - $" + escapeHtml(item.priceMax);
-  return "$" + escapeHtml(item.price);
+  if (hasMax) {
+    const maxInfo = parsePriceValue(String(item.priceMax).trim());
+    if (maxInfo.isNumeric) {
+      return "$" + escapeHtml(priceInfo.formatted) + " - $" + escapeHtml(maxInfo.formatted);
+    }
+    // max price isn't a clean number — fall back to showing just the single price
+  }
+  return "$" + escapeHtml(priceInfo.formatted);
 }
 
 function buildSectionEl(section) {
