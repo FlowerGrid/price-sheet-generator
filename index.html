@@ -1495,9 +1495,7 @@ document.getElementById("export-btn").addEventListener("click", async () => {
     useCORS: true,
     backgroundColor: "#FAFAF8",
     scrollX: 0,
-    scrollY: 0,
-    windowWidth: document.documentElement.scrollWidth,
-    windowHeight: document.documentElement.scrollHeight
+    scrollY: 0
   };
 
   const opt = {
@@ -1520,13 +1518,40 @@ document.getElementById("export-btn").addEventListener("click", async () => {
     // (toCanvas/.get) rather than calling html2canvas directly — the bundled
     // CDN build doesn't necessarily expose html2canvas as a bare global, only
     // html2pdf's own internal API is guaranteed to be there.
+    //
+    // For pages after the first, the element is temporarily moved into an
+    // isolated capture stage pinned to the top-left of the screen before
+    // being captured, then moved straight back to its original spot in the
+    // preview. This removes any dependency on html2canvas correctly figuring
+    // out where a page sits within the much taller stacked preview layout —
+    // it only ever sees the one page, alone, at a clean (0,0) position.
+    async function capturePageCanvas(pageEl) {
+      const originalParent = pageEl.parentNode;
+      const originalNextSibling = pageEl.nextSibling;
+      const stage = document.createElement("div");
+      stage.style.position = "fixed";
+      stage.style.left = "0";
+      stage.style.top = "0";
+      stage.style.margin = "0";
+      document.body.appendChild(stage);
+      stage.appendChild(pageEl);
+
+      const canvas = await html2pdf().set(opt).from(pageEl).toCanvas().get("canvas");
+
+      if (originalNextSibling) originalParent.insertBefore(pageEl, originalNextSibling);
+      else originalParent.appendChild(pageEl);
+      document.body.removeChild(stage);
+
+      return canvas;
+    }
+
     const pdf = await html2pdf().set(opt).from(pageEls[0]).toPdf().get("pdf");
 
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
 
     for (let i = 1; i < pageEls.length; i++) {
-      const canvas = await html2pdf().set(opt).from(pageEls[i]).toCanvas().get("canvas");
+      const canvas = await capturePageCanvas(pageEls[i]);
       const imgData = canvas.toDataURL("image/jpeg", 0.98);
       pdf.addPage();
       pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
