@@ -1519,28 +1519,22 @@ document.getElementById("export-btn").addEventListener("click", async () => {
     // CDN build doesn't necessarily expose html2canvas as a bare global, only
     // html2pdf's own internal API is guaranteed to be there.
     //
-    // For pages after the first, the element is temporarily moved into an
-    // isolated capture stage pinned to the top-left of the screen before
-    // being captured, then moved straight back to its original spot in the
-    // preview. This removes any dependency on html2canvas correctly figuring
-    // out where a page sits within the much taller stacked preview layout —
-    // it only ever sees the one page, alone, at a clean (0,0) position.
-    async function capturePageCanvas(pageEl) {
-      const originalParent = pageEl.parentNode;
-      const originalNextSibling = pageEl.nextSibling;
-      const stage = document.createElement("div");
-      stage.style.position = "fixed";
-      stage.style.left = "0";
-      stage.style.top = "0";
-      stage.style.margin = "0";
-      document.body.appendChild(stage);
-      stage.appendChild(pageEl);
+    // For pages after the first, every OTHER page is temporarily hidden with
+    // display:none (not moved anywhere) so the target page is the only thing
+    // present in the stacked layout during capture — it stays exactly where
+    // it already sits in normal document flow. An earlier attempt tried
+    // relocating the page into an isolated fixed-position container instead,
+    // but that caused html2canvas to measure double the correct page height
+    // (likely a quirk of position:fixed interacting with its document-cloning
+    // step) — simply hiding siblings avoids repositioning anything at all.
+    async function capturePageCanvas(pageEl, allPages) {
+      const others = allPages.filter(p => p !== pageEl);
+      const prevDisplay = others.map(p => p.style.display);
+      others.forEach(p => { p.style.display = "none"; });
 
       const canvas = await html2pdf().set(opt).from(pageEl).toCanvas().get("canvas");
 
-      if (originalNextSibling) originalParent.insertBefore(pageEl, originalNextSibling);
-      else originalParent.appendChild(pageEl);
-      document.body.removeChild(stage);
+      others.forEach((p, idx) => { p.style.display = prevDisplay[idx]; });
 
       return canvas;
     }
@@ -1551,7 +1545,7 @@ document.getElementById("export-btn").addEventListener("click", async () => {
     const pageHeight = pdf.internal.pageSize.getHeight();
 
     for (let i = 1; i < pageEls.length; i++) {
-      const canvas = await capturePageCanvas(pageEls[i]);
+      const canvas = await capturePageCanvas(pageEls[i], pageEls);
       const imgData = canvas.toDataURL("image/jpeg", 0.98);
       pdf.addPage();
       pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight);
