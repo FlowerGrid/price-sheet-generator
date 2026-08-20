@@ -252,6 +252,20 @@
   }
   .field-textarea { resize: none; min-height: 44px; line-height: 1.4; }
 
+  .field-input-error {
+    border-color: var(--danger) !important;
+    background: #FBF0EE !important;
+  }
+  .field-input-error:focus {
+    border-color: var(--danger) !important;
+  }
+  .field-error-text {
+    color: var(--danger);
+    font-size: 9px;
+    line-height: 1.4;
+    margin-top: 5px;
+  }
+
   .field-row { margin-bottom: 8px; }
   .field-row:last-child { margin-bottom: 0; }
   .field-row-split {
@@ -795,13 +809,21 @@ function renderEditForm() {
         priceRow.appendChild(priceInput);
         card.appendChild(priceRow);
       } else {
+        let maxInput, maxErrorText;
+        const updateRangeValidity = () => {
+          if (!maxInput) return;
+          const invalid = isRangeInvalid(item);
+          maxInput.classList.toggle("field-input-error", invalid);
+          maxErrorText.style.display = invalid ? "block" : "none";
+        };
+
         const wrap = document.createElement("div");
         wrap.className = "price-input-wrap";
         const priceInput = document.createElement("input");
         priceInput.className = "field-input";
         priceInput.inputMode = "decimal";
         priceInput.value = item.price;
-        priceInput.addEventListener("input", () => { item.price = priceInput.value; persist(); renderSheet(); });
+        priceInput.addEventListener("input", () => { item.price = priceInput.value; persist(); renderSheet(); updateRangeValidity(); });
         wrap.appendChild(priceInput);
         priceRow.appendChild(wrap);
         card.appendChild(priceRow);
@@ -812,15 +834,24 @@ function renderEditForm() {
         maxRow.innerHTML = `<span class="field-label">Max price (optional — makes it a range)</span>`;
         const maxWrap = document.createElement("div");
         maxWrap.className = "price-input-wrap";
-        const maxInput = document.createElement("input");
+        maxInput = document.createElement("input");
         maxInput.className = "field-input";
         maxInput.inputMode = "decimal";
         maxInput.placeholder = "Leave blank for a single price";
         maxInput.value = item.priceMax || "";
-        maxInput.addEventListener("input", () => { item.priceMax = maxInput.value; persist(); renderSheet(); });
+        maxInput.id = `max-price-${section.id}-${iIdx}`;
+        maxInput.addEventListener("input", () => { item.priceMax = maxInput.value; persist(); renderSheet(); updateRangeValidity(); });
         maxWrap.appendChild(maxInput);
         maxRow.appendChild(maxWrap);
+
+        maxErrorText = document.createElement("div");
+        maxErrorText.className = "field-error-text";
+        maxErrorText.textContent = "Max price must be higher than the starting price";
+        maxErrorText.style.display = "none";
+        maxRow.appendChild(maxErrorText);
+
         card.appendChild(maxRow);
+        updateRangeValidity();
       }
 
       secEl.appendChild(card);
@@ -844,6 +875,37 @@ function renderEditForm() {
   const notesInput = document.getElementById("notes-text");
   notesInput.value = data.notes;
   notesInput.oninput = () => { data.notes = notesInput.value; persist(); renderSheet(); };
+}
+
+/* ---------- VALIDATION: PRICE RANGES ---------- */
+function parsePriceNum(str) {
+  if (str === undefined || str === null) return NaN;
+  const cleaned = String(str).replace(/[^0-9.]/g, "");
+  if (cleaned === "") return NaN;
+  return parseFloat(cleaned);
+}
+
+function isRangeInvalid(item) {
+  if (item.isNote) return false;
+  const maxStr = item.priceMax;
+  if (maxStr === undefined || String(maxStr).trim() === "") return false;
+  const p = parsePriceNum(item.price);
+  const m = parsePriceNum(maxStr);
+  if (isNaN(p) || isNaN(m)) return false;
+  return m <= p;
+}
+
+// only items actually reaching the exported sheet block navigation to Preview
+function collectInvalidPriceFields() {
+  const invalid = [];
+  data.sections.forEach((section, sIdx) => {
+    if (!section.visible) return;
+    section.items.forEach((item, iIdx) => {
+      if (!item.visible) return;
+      if (isRangeInvalid(item)) invalid.push({ section, item, sIdx, iIdx });
+    });
+  });
+  return invalid;
 }
 
 /* ---------- RENDER: STYLED SHEET ---------- */
@@ -936,6 +998,21 @@ function scalePreview() {
 /* ---------- TABS ---------- */
 document.querySelectorAll(".tab-btn").forEach(btn => {
   btn.addEventListener("click", () => {
+    if (btn.dataset.tab === "preview") {
+      const invalid = collectInvalidPriceFields();
+      if (invalid.length > 0) {
+        showToast("Fix the highlighted price range" + (invalid.length > 1 ? "s" : "") + " first");
+        const first = invalid[0];
+        const el = document.getElementById(`max-price-${first.section.id}-${first.iIdx}`);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.focus();
+          el.classList.add("field-input-error");
+        }
+        return; // block the tab switch
+      }
+    }
+
     document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     document.querySelectorAll(".panel").forEach(p => p.classList.remove("active"));
@@ -968,6 +1045,21 @@ function showToast(msg) {
 
 /* ---------- EXPORT PDF ---------- */
 document.getElementById("export-btn").addEventListener("click", async () => {
+  const invalidOnExport = collectInvalidPriceFields();
+  if (invalidOnExport.length > 0) {
+    showToast("Fix the highlighted price range" + (invalidOnExport.length > 1 ? "s" : "") + " first");
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "edit"));
+    document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "edit-panel"));
+    const first = invalidOnExport[0];
+    const el = document.getElementById(`max-price-${first.section.id}-${first.iIdx}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.focus();
+      el.classList.add("field-input-error");
+    }
+    return;
+  }
+
   const btn = document.getElementById("export-btn");
   btn.disabled = true;
   btn.textContent = "Preparing…";
